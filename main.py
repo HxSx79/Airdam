@@ -2,10 +2,10 @@ from ultralytics import YOLO
 import cv2
 import math 
 # start webcam
-camera_id = "/dev/video0"
+camera_id = "/dev/video1"
 cap = cv2.VideoCapture(camera_id, cv2.CAP_V4L2)
 cap.set(3, 640)
-cap.set(4, 480)
+cap.set(4, 640)
 
 # model
 model = YOLO("best.pt")
@@ -38,13 +38,19 @@ while True:
             print("Class name -->", classNames[cls])
 
             # object details
+            x1 = x1 + 10
             org = [x1, y1]
+            y2 = y2 - 32
+            orgc = [x1,y2]
             font = cv2.FONT_HERSHEY_SIMPLEX
             fontScale = 1
             color = (255, 0, 0)
             thickness = 2
 
+            conf = str(confidence)
+
             cv2.putText(img, classNames[cls], org, font, fontScale, color, thickness)
+            cv2.putText(img, conf, orgc, font, fontScale, color, thickness)
 
     cv2.imshow('Webcam', img)
     if cv2.waitKey(1) == ord('q'):
