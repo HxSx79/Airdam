@@ -38,14 +38,14 @@ while True:
             print("Class name -->", classNames[cls])
 
             # object details
-            x1 = x1 + 10
-            org = [x1, y1]
-            y2 = y2 - 32
-            orgc = [x1,y2]
+            ycl = y1 - 10
+            org = [x1, ycl]
+            ycf = y2 + 20
+            orgc = [x1,ycf]
             font = cv2.FONT_HERSHEY_SIMPLEX
-            fontScale = 1
+            fontScale = 0.5
             color = (255, 0, 0)
-            thickness = 2
+            thickness = 1
 
             conf = str(confidence)
 
