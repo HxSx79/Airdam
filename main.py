@@ -1,97 +1,65 @@
-import cv2
-import numpy as np
 from ultralytics import YOLO
-import cvzone
-import numpy as np
+import cv2
+import math 
+# start webcam
+camera_id = "/dev/video0"
+cap = cv2.VideoCapture(camera_id, cv2.CAP_V4L2)
+cap.set(3, 640)
+cap.set(4, 480)
+
+# model
+model = YOLO("yolo-Weights/yolov8n.pt")
+
+# object classes
+classNames = ["person", "bicycle", "car", "motorbike", "aeroplane", "bus", "train", "truck", "boat",
+              "traffic light", "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat",
+              "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella",
+              "handbag", "tie", "suitcase", "frisbee", "skis", "snowboard", "sports ball", "kite", "baseball bat",
+              "baseball glove", "skateboard", "surfboard", "tennis racket", "bottle", "wine glass", "cup",
+              "fork", "knife", "spoon", "bowl", "banana", "apple", "sandwich", "orange", "broccoli",
+              "carrot", "hot dog", "pizza", "donut", "cake", "chair", "sofa", "pottedplant", "bed",
+              "diningtable", "toilet", "tvmonitor", "laptop", "mouse", "remote", "keyboard", "cell phone",
+              "microwave", "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors",
+              "teddy bear", "hair drier", "toothbrush"
+              ]
 
 
-def RGB(event, x, y, flags, param):
-    if event == cv2.EVENT_MOUSEMOVE:
-        point = [x, y]
-        print(point)
-
-
-cv2.namedWindow('RGB')
-cv2.setMouseCallback('RGB', RGB)
-
-# Load the YOLO11 model
-model = YOLO("best.pt")
-
-# Export the model
-# model.export(format="engine")  # creates 'yolov11.engine'
-
-# Load the exported TensorRT model
-# trt_model = YOLO("best.engine")
-
-my_file = open("coco.txt", "r")
-data = my_file.read()
-class_list = data.split("\n")
-# Open the video file (use video file or webcam, here using webcam)
-cap = cv2.VideoCapture('Test_MY.mp4')
-
-my_file = open("coco.txt", "r")
-data = my_file.read()
-class_list = data.split("\n")
-
-count = 0
-cx1 = 150
-cx2 = 180
-offset = 8
-inp = {}
-enter = []
-exp = {}
-exitp = []
 while True:
-    ret, frame = cap.read()
-    if not ret:
-        break
-    count += 1
-    if count % 3 != 0:
-        continue
+    success, img = cap.read()
+    results = model(img, stream=True)
 
-    frame = cv2.resize(frame, (480, 856))
+    # coordinates
+    for r in results:
+        boxes = r.boxes
 
-    # Run YOLO11 tracking on the frame, persisting tracks between frames
-    results = model.track(frame, persist=True,conf=0.5)
+        for box in boxes:
+            # bounding box
+            x1, y1, x2, y2 = box.xyxy[0]
+            x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2) # convert to int values
 
-    # Check if there are any boxes in the results
-    if results[0].boxes is not None and results[0].boxes.id is not None:
-        # Get the boxes (x, y, w, h), class IDs, track IDs, and confidences
-        boxes = results[0].boxes.xyxy.int().cpu().tolist()  # Bounding boxes
-        class_ids = results[0].boxes.cls.int().cpu().tolist()  # Class IDs
-        track_ids = results[0].boxes.id.int().cpu().tolist()  # Track IDs
-        confidences = results[0].boxes.conf.cpu().tolist()  # Confidence score
+            # put box in cam
+            cv2.rectangle(img, (x1, y1), (x2, y2), (255, 0, 255), 3)
 
-        for box, class_id, track_id, conf in zip(boxes, class_ids, track_ids, confidences):
-            c = 'Tesla_MY'
-            x1, y1, x2, y2 = box
-            cx=int(x1+x2)//2
-            cy=int(y1+y2)//2
-            cv2.circle(frame, (cx, cy), 4, (255, 0, 0), -1)
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
-            cvzone.putTextRect(frame, f'{track_id}', (x1, y2), .5, 1)
-            cvzone.putTextRect(frame, f'{c}', (x1, y1), .5, 1)
-            if cx2<(cx+offset) and cx2>(cx-offset):
-                inp[track_id]=(cx,cy)
-            if track_id in inp:
-                if cx1<(cx+offset) and cx1>(cx-offset):
+            # confidence
+            confidence = math.ceil((box.conf[0]*100))/100
+            print("Confidence --->",confidence)
 
-                    #cv2.circle(frame,(cx,cy),4,(255,0,0),-1)
-                    #cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
-                    #cvzone.putTextRect(frame, f'{track_id}', (x1, y2), 1, 1)
-                    #cvzone.putTextRect(frame, f'{c}', (x1, y1), 1, 1)
-                    if enter.count(track_id)==0:
-                        enter.append(track_id)
+            # class name
+            cls = int(box.cls[0])
+            print("Class name -->", classNames[cls])
 
-    cv2.line(frame,(150,175),(150,720),(0,0,255),2)
-    cv2.line(frame,(180,175),(180,720),(255,0,255),2)
-    enterp=len(enter)
-    cvzone.putTextRect(frame, f'MY_PARTS:{enterp}', (50, 50), 1, 1)
+            # object details
+            org = [x1, y1]
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            fontScale = 1
+            color = (255, 0, 0)
+            thickness = 2
 
-    cv2.imshow("RGB", frame)
-    if cv2.waitKey(1) & 0xFF == ord("q"):
+            cv2.putText(img, classNames[cls], org, font, fontScale, color, thickness)
+
+    cv2.imshow('Webcam', img)
+    if cv2.waitKey(1) == ord('q'):
         break
 
-# Release the video capture object and close the display window
 cap.release()
 cv2.destroyAllWindows()
