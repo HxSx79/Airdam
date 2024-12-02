@@ -8,7 +8,7 @@ cap.set(3, 640)
 cap.set(4, 480)
 
 # model
-model = YOLO("yolo-Weights/yolov8n.pt")
+model = YOLO("best.pt")
 
 # object classes
 classNames = ["Airdam", "Clip_OK", "Clip_NOK"]
