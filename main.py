@@ -1,60 +1,96 @@
-from ultralytics import YOLO
+# jetson_server.py
+import asyncio
+import websockets
+import json
 import cv2
-import math 
-# start webcam
-camera_id = "/dev/video1"
-cap = cv2.VideoCapture(camera_id, cv2.CAP_V4L2)
-cap.set(3, 640)
-cap.set(4, 640)
+import numpy as np
+from ultralytics import YOLO
+import base64
+from datetime import datetime
 
-# model
-model = YOLO("best.pt")
+class JetsonDetectionServer:
+    def __init__(self):
+        self.model = YOLO('best.pt')  # Load your custom YOLO model
+        camera_id = "/dev/video1"
+        self.camera = cv2.VideoCapture(camera_id, cv2.CAP_V4L2)  # Use CSI camera or USB camera
+        self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 640)
+        self.is_detecting = False
+        
+    async def process_frame(self):
+        ret, frame = self.camera.read()
+        if not ret:
+            return None
+            
+        # Run YOLO detection
+        results = self.model(frame)
+        detections = []
+        
+        for result in results[0].boxes.data:
+            x1, y1, x2, y2, conf, cls = result
+            detection = {
+                "id": str(datetime.now().timestamp()),
+                "label": self.model.names[int(cls)],
+                "confidence": float(conf),
+                "bbox": {
+                    "x": float(x1 / frame.shape[1] * 100),
+                    "y": float(y1 / frame.shape[0] * 100),
+                    "width": float((x2 - x1) / frame.shape[1] * 100),
+                    "height": float((y2 - y1) / frame.shape[0] * 100)
+                }
+            }
+            detections.append(detection)
+            
+        # Encode frame to JPEG
+        _, buffer = cv2.imencode('.jpg', frame)
+        frame_base64 = base64.b64encode(buffer).decode('utf-8')
+        
+        return {
+            "frame": frame_base64,
+            "detections": detections,
+            "fps": self.camera.get(cv2.CAP_PROP_FPS)
+        }
 
-# object classes
-classNames = ["Airdam", "Clip_OK", "Clip_NOK"]
+    async def websocket_handler(self, websocket, path):
+        try:
+            while True:
+                message = await websocket.recv()
+                command = json.loads(message)
+                
+                if command["type"] == "toggle_detection":
+                    self.is_detecting = command["value"]
+                    await websocket.send(json.dumps({
+                        "type": "status",
+                        "detecting": self.is_detecting
+                    }))
+                
+                if self.is_detecting:
+                    result = await self.process_frame()
+                    if result:
+                        await websocket.send(json.dumps({
+                            "type": "frame",
+                            **result
+                        }))
+                
+                await asyncio.sleep(0.033)  # ~30 FPS
+                
+        except websockets.exceptions.ConnectionClosed:
+            print("Client disconnected")
+        finally:
+            if self.is_detecting:
+                self.is_detecting = False
 
-while True:
-    success, img = cap.read()
-    results = model(img, stream=True)
+    def start_server(self):
+        server = websockets.serve(
+            self.websocket_handler,
+            "0.0.0.0",  # Listen on all interfaces
+            8765  # Port number
+        )
+        print("WebSocket server started on ws://0.0.0.0:8765")
+        asyncio.get_event_loop().run_until_complete(server)
+        asyncio.get_event_loop().run_forever()
 
-    # coordinates
-    for r in results:
-        boxes = r.boxes
+if __name__ == "__main__":
+    server = JetsonDetectionServer()
+    server.start_server()
 
-        for box in boxes:
-            # bounding box
-            x1, y1, x2, y2 = box.xyxy[0]
-            x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2) # convert to int values
-
-            # put box in cam
-            cv2.rectangle(img, (x1, y1), (x2, y2), (255, 0, 255), 3)
-
-            # confidence
-            confidence = math.ceil((box.conf[0]*100))/100
-            print("Confidence --->",confidence)
-
-            # class name
-            cls = int(box.cls[0])
-            print("Class name -->", classNames[cls])
-
-            # object details
-            ycl = y1 - 10
-            org = [x1, ycl]
-            ycf = y2 + 20
-            orgc = [x1,ycf]
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            fontScale = 0.5
-            color = (255, 0, 0)
-            thickness = 1
-
-            conf = str(confidence)
-
-            cv2.putText(img, classNames[cls], org, font, fontScale, color, thickness)
-            cv2.putText(img, conf, orgc, font, fontScale, color, thickness)
-
-    cv2.imshow('Webcam', img)
-    if cv2.waitKey(1) == ord('q'):
-        break
-
-cap.release()
-cv2.destroyAllWindows()
